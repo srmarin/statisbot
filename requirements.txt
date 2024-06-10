@@ -1,0 +1,14 @@
+groq==0.8.0
+langchain==0.2.1
+langchain-core==0.2.3
+langchain-groq==0.1.4
+langchain-text-splitters==0.2.0
+langsmith==0.1.69
+pydantic==2.7.3
+pydantic_core==2.18.4
+pymongo==4.7.3
+python-dateutil==2.9.0.post0
+python-dotenv==1.0.1
+python-telegram-bot==21.2
+pytz==2024.1
+telegram==0.0.1
