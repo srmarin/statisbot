@@ -5,6 +5,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes, Defaults
 
+import logging
 from datetime import timedelta, datetime, time
 import io
 import os
@@ -20,6 +21,15 @@ from chains import summary_chain
 gmt2 = pytz.timezone('Europe/Madrid')
 HOURS_IN_KEYBOARD = (3, 7, 9, 11, 13, 15, 17, 19, 22, 24)
 mongoConn = MongoConn('messages')
+
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+# set higher logging level for httpx to avoid all GET and POST requests being logged
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
+logger = logging.getLogger(__name__)
 
 def get_current_week(date):
     # Asegurarse de que la fecha dada sea un objeto datetime
@@ -47,7 +57,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.message.from_user.id
         message_time = update.message.date.astimezone(gmt2)
 
-        print(f"{update.message.from_user.first_name} - {update.message.text}")
+        logger.info(f"{update.message.from_user.first_name} - {update.message.text}")
         mongoConn.save({
             'chat_id': update.message.chat_id,
             'username': username,
@@ -59,7 +69,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Comando para mostrar estadísticas
 def stats_message(chat_id):
-    print('##### Stats command #####')
+    logger.info('##### Stats command #####')
 
     chat_id = Int64(chat_id)
 
@@ -91,7 +101,7 @@ def stats_message(chat_id):
 ¡Que el ritmo no pare\! 💬"""
 
     # await update.message.reply_text(output_message)
-    print('#'*15)
+    logger.info('#'*15)
     return output
 
 
@@ -173,7 +183,7 @@ async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     
     chat_id = Int64(update.callback_query.message.chat_id)
-    print(query.message.chat_id)
+    logger.info(query.message.chat_id)
 
     selected_hour, next_hour = query.data.split()
     today = datetime.today().replace(minute=0, second=0, microsecond=0)
@@ -185,16 +195,16 @@ async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         open_range = today.replace(hour=int(selected_hour)-2)
         close_range = today.replace(hour=int(next_hour)-2, minute=59, second=59)
 
-    print(f"Buscando entre {open_range} y {close_range}")
+    logger.info(f"Buscando entre {open_range} y {close_range}")
     
     messages =list(mongoConn.read_by_daterange(
         start_day=open_range,
         end_day=close_range, 
         chat_id=chat_id
     ))
-    print("Cantidad de mensajes encontrados: ", len(messages))
+    logger.info("Cantidad de mensajes encontrados: ", len(messages))
     if len(messages) == 0:
-        print("No hay mensajes: ", len(list(messages)))
+        logger.info("No hay mensajes: ", len(list(messages)))
         await update.callback_query.message.reply_text(
             f"Resumen entre {selected_hour}:00 y {next_hour}:00:\n" + 
             "No hay mensajes."
@@ -260,12 +270,12 @@ async def notify_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def stats_job(context: ContextTypes.DEFAULT_TYPE):
-    print("##### LLega a ejecutarse el chron")
+    logger.info("##### LLega a ejecutarse el chron")
     message = stats_message(HOLIS_ID)
     await context.bot.send_message(text=message, chat_id=HOLIS_ID, parse_mode=ParseMode.MARKDOWN)
 
 async def weekly_stats_job(context: ContextTypes.DEFAULT_TYPE):
-    print("##### Weekly stats ####")
+    logger.info("##### Weekly stats ####")
     message = weekly_stats_message(HOLIS_ID)
     await context.bot.send_message(text=message, chat_id=HOLIS_ID, parse_mode=ParseMode.MARKDOWN)
 
