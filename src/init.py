@@ -142,6 +142,8 @@ def weekly_stats_message(chat_id):
 {user_stats_message}
 
 ¡Que el ritmo no pare\! 💬"""
+    
+    return output
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     output = stats_message(update.message.chat_id)
     await update.message.reply_markdown_v2(output)
@@ -239,14 +241,12 @@ async def chart_per_person(update:Update, context: ContextTypes.DEFAULT_TYPE):
     figure = plt.figure()
     plt.bar(x_axis, y_axis, color='red', width=0.4)
     plt.xticks(range(min(x_axis), max(x_axis)+1))
-    # plt.yticks(range(0, max(y_axis)+1))
     plt.xlabel("Horas de los mensajes")
     plt.ylabel(f"Número de mensajes de {username}")
     picture = io.BytesIO()
     plt.savefig(picture, format='png')
     picture.seek(0)
     graph_img = picture.read()
-    # picture_b64 = base64.b64encode()
 
     await update.message.reply_photo(
         graph_img, 
