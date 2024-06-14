@@ -1,19 +1,24 @@
 from bson.int64 import Int64
 from dotenv import load_dotenv
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackContext, ContextTypes
+from matplotlib import pyplot as plt
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ParseMode
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes, Defaults
 
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, time
+import io
 import os
 import pytz
 
 load_dotenv()
 
+from constants import USERS, HOLIS_ID
+
 from db import MongoConn
 from chains import summary_chain
 
 gmt2 = pytz.timezone('Europe/Madrid')
-
+HOURS_IN_KEYBOARD = (3, 7, 9, 11, 13, 15, 17, 19, 22, 24)
 mongoConn = MongoConn('messages')
 
 def get_current_week(date):
@@ -34,30 +39,29 @@ def get_current_week(date):
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     
-    username = update.message.from_user.full_name
-    if username == 'Pablo':
-        username = 'Pablo' if update.message.from_user.username == 'pablodelucia' else 'Pout'
+    if update.edited_message is None:
+        username = update.message.from_user.full_name
+        if username == 'Pablo':
+            username = 'Pablo' if update.message.from_user.username == 'pablodelucia' else 'Pout'
 
-    user_id = update.message.from_user.id
+        user_id = update.message.from_user.id
+        message_time = update.message.date.astimezone(gmt2)
 
-    message_time = update.message.date.astimezone(gmt2)
-
-    print(f"{update.message.from_user.first_name} - {update.message.text}")
-    
-    mongoConn.save({
-        'chat_id': update.message.chat_id,
-        'username': username,
-        'user_id': user_id,
-        'message_time': message_time,
-        'message': update.message.text
-    })
+        print(f"{update.message.from_user.first_name} - {update.message.text}")
+        mongoConn.save({
+            'chat_id': update.message.chat_id,
+            'username': username,
+            'user_id': user_id,
+            'message_time': message_time,
+            'message': update.message.text
+        })
 
 
 # Comando para mostrar estadísticas
-async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def stats_message(chat_id):
     print('##### Stats command #####')
 
-    chat_id = Int64(update.message.chat_id)
+    chat_id = Int64(chat_id)
 
     today_messages = mongoConn.read_by_datetime(datetime.now(), chat_id)
     total_messages = len(list(today_messages))
@@ -66,76 +70,227 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     hours_message = ""
     for hour_counter in mongoConn.get_msg_by_hour(datetime.now(), chat_id):
-        hours_message += f"🕰️ {int(hour_counter['_id'])+2:02d}:00 - {hour_counter['count']}\n"
+        hours_message += f"🕰️ {int(hour_counter['_id'])+2:02d}:00 \- {hour_counter['count']}\n"
     
     principal_contributors_message = ""
     icon = ['🥇', '🥈', '🥉'] + ['👥']*(len(most_active_users)-3)
     for i, user in enumerate(most_active_users):
         principal_contributors_message += f"{icon[i]} {user['username']}: {user['count']} mensajes {'🔥' if user['count']>100 else ''}\n"
 
-    output = f"""💬 Resumen del Chat Diario 💬
-📊 Estadísticas de {datetime.today().strftime('%d/%m/%Y')}
+    output = f"""💬 __*Resumen del Chat Diario*__ 💬
+📊 *Estadísticas de {datetime.today().strftime('%d/%m/%Y')}*
 
-**Total de mensajes enviados hoy:** {total_messages} 📱
+*Total de mensajes enviados hoy:* {total_messages} 📱
 
-**Desglose Horario:**
+*Desglose Horario:*
 {hours_message}
 
-**Contribuyentes Principales:**
+*Contribuyentes Principales:*
 {principal_contributors_message}
 
-¡Que el ritmo no pare! 💬"""
+¡Que el ritmo no pare\! 💬"""
 
     # await update.message.reply_text(output_message)
-    await update.message.reply_markdown(output)
     print('#'*15)
+    return output
+
+
+
+def weekly_stats_message(chat_id):
+    chat_id = Int64(chat_id)
+    start_date, end_date = get_current_week(datetime.now())
+    total_weekly_messages = len(list(mongoConn.read_by_daterange(start_date, end_date, chat_id)))
+    
+    group_message_by_hour = {}
+    user_messages = {}
+    for day in [start_date + timedelta(days=x) for x in range(7)]:
+        for hour_counter in mongoConn.get_msg_by_hour(day, chat_id):
+            key = int(hour_counter['_id'])+2 # +2 to fix hour datetime
+            counter = int(hour_counter['count'])
+            if key not in group_message_by_hour.keys():
+                group_message_by_hour[key] = counter
+            else:
+                group_message_by_hour[key] += counter
+            # hours_message += f"🕰️ {int(hour_counter['_id'])+2:02d}:00 - {hour_counter['count']}\n"
+    
+        message_per_user = mongoConn.get_msg_by_user(day, chat_id)
+        most_active_users = sorted(message_per_user, key=lambda x: x['count'], reverse=True)
+        for i, user in enumerate(most_active_users):
+            if user['username'] in user_messages.keys():
+                user_messages[user['username']] += user['count']
+            else:
+                user_messages[user['username']] = user['count']
+
+    hours_message = ""
+    for hour, count in sorted(group_message_by_hour.items()):
+        hours_message += f"🕰️ {hour:02d}:00 \- {count}\n"
+    
+    user_stats_message = ""
+    icon = ['🥇', '🥈', '🥉'] + ['👥']*(len(user_messages)-3)
+    for i, (user, count) in enumerate(sorted(user_messages.items(),key=lambda x:x[1], reverse=True)):
+        user_stats_message += f"{icon[i]} {user}: {count} mensajes {'🔥' if count > 1000 else ''}\n"
+
+    output = f"""💬 __*Resumen del Chat Semanal*__ 💬
+📊 *Estadísticas para semana {start_date.strftime('%d/%m/%Y')} \- {end_date.strftime('%d/%m/%Y')}*
+
+*Total de mensajes enviados:* {total_weekly_messages} 📱
+
+*Desglose Horario:*
+{hours_message}
+
+*Desglose por usuarios:*
+{user_stats_message}
+
+¡Que el ritmo no pare\! 💬"""
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    output = stats_message(update.message.chat_id)
+    await update.message.reply_markdown_v2(output)
 
 async def weekly_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    chat_id = Int64(update.message.chat_id)
-    stat_date, end_date = get_current_week(datetime.now())
-    weekly_messages = len(
-        list(
-            mongoConn.read_by_daterange(stat_date, end_date, chat_id)
-        )
-    )
-    await update.message.reply_markdown(
-        f"Esta semana se han enviado {weekly_messages} mensajes 💬"
-    )
+    chat_id = update.message.chat_id
+    output = weekly_stats_message(chat_id)
+    await update.message.reply_markdown_v2(output)
+
+async def summary_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    
+    options = [
+            InlineKeyboardButton(f"{drange}:00 - {drange_next}:00", callback_data=f"{drange} {drange_next}") 
+            for drange, drange_next in zip(HOURS_IN_KEYBOARD, HOURS_IN_KEYBOARD[1:]) if drange_next < datetime.now().hour+1
+    ]
+    keyboard = [
+        options[:len(options)//2],
+        options[len(options)//2:],
+        [InlineKeyboardButton("Hasta ahora", callback_data='last -')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Elige una opción:", reply_markup=reply_markup)
 
 async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    chat_id = Int64(update.message.chat_id)
+    query = update.callback_query
+    
+    chat_id = Int64(update.callback_query.message.chat_id)
+    print(query.message.chat_id)
 
-    last_message_date = datetime.now() - timedelta(hours=2)
-    half_hour_from_last_message_date = last_message_date - timedelta(minutes=30)
+    selected_hour, next_hour = query.data.split()
+    today = datetime.today().replace(minute=0, second=0, microsecond=0)
 
-    messages = mongoConn.read_by_daterange(
-        start_day=half_hour_from_last_message_date,
-        end_day=last_message_date, 
+    if selected_hour == 'last':
+        open_range = today - timedelta(hours=2)
+        close_range = datetime.now()
+    else:
+        open_range = today.replace(hour=int(selected_hour)-2)
+        close_range = today.replace(hour=int(next_hour)-2, minute=59, second=59)
+
+    print(f"Buscando entre {open_range} y {close_range}")
+    
+    messages =list(mongoConn.read_by_daterange(
+        start_day=open_range,
+        end_day=close_range, 
+        chat_id=chat_id
+    ))
+    print("Cantidad de mensajes encontrados: ", len(messages))
+    if len(messages) == 0:
+        print("No hay mensajes: ", len(list(messages)))
+        await update.callback_query.message.reply_text(
+            f"Resumen entre {selected_hour}:00 y {next_hour}:00:\n" + 
+            "No hay mensajes."
+        )
+        
+        albo_sticker = 'CAACAgQAAxkBAAPWZmf6uvhxFHnhP1I9yEbCCk1Iaf8AAl8QAALzGmFSt4r9iyHeZNs1BA'
+        await update.callback_query.message.reply_sticker(albo_sticker)
+        
+    else:
+
+        chat_messages = [f"{m.get('username')}: {m.get('message')}" for m in messages]
+        chat_input = "\n".join(chat_messages)
+
+        summary_text = summary_chain(chat_input)
+
+        await update.callback_query.message.reply_text(
+            f"Resumen entre {selected_hour}:00 y {next_hour}:00:\n" + 
+            summary_text
+        )
+
+async def chart_per_person(update:Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if len(context.args) ==1:
+        username = context.args[0]
+        user_id = USERS.get(username)
+    else:
+        user_id = update.message.from_user.id
+        username = "@"+update.message.from_user.username
+
+    chat_id = update.message.chat_id
+
+    user_list_message = mongoConn.get_message_by_hour_and_person(
+        day=datetime.today(), 
+        user_id=user_id,
         chat_id=chat_id
     )
-    if len(messages) < 10:
-        messages = mongoConn.read_all({'chat_id':chat_id}).sort('message_time', -1).limit(200)
-    chat_messages = [f"{m.get('username')}: {m.get('message')}" for m in messages]
-    chat_input = "\n".join(chat_messages)
 
-    summary_text = summary_chain(chat_input)
-    await update.message.reply_text(summary_text)
+    x_axis, y_axis = map(
+        list, 
+        zip(*
+            [(message['_id']+2, message['count']) for message in user_list_message]
+        )
+    ) # Day hours  x  Message grouped by hour
+    figure = plt.figure()
+    plt.bar(x_axis, y_axis, color='red', width=0.4)
+    plt.xticks(range(min(x_axis), max(x_axis)+1))
+    # plt.yticks(range(0, max(y_axis)+1))
+    plt.xlabel("Horas de los mensajes")
+    plt.ylabel(f"Número de mensajes de {username}")
+    picture = io.BytesIO()
+    plt.savefig(picture, format='png')
+    picture.seek(0)
+    graph_img = picture.read()
+    # picture_b64 = base64.b64encode()
 
+    await update.message.reply_photo(
+        graph_img, 
+        caption=f"Gráfica de mensajes de {username}"
+    )
+   
+async def notify_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    notify_message = " ".join(USERS.keys())
+
+    await update.message.reply_text(notify_message)
+
+
+async def stats_job(context: ContextTypes.DEFAULT_TYPE):
+    print("##### LLega a ejecutarse el chron")
+    message = stats_message(HOLIS_ID)
+    await context.bot.send_message(text=message, chat_id=HOLIS_ID, parse_mode=ParseMode.MARKDOWN)
+
+async def weekly_stats_job(context: ContextTypes.DEFAULT_TYPE):
+    print("##### Weekly stats ####")
+    message = weekly_stats_message(HOLIS_ID)
+    await context.bot.send_message(text=message, chat_id=HOLIS_ID, parse_mode=ParseMode.MARKDOWN)
 
 # Configurar el bot
 def main():
     # Reemplaza 'YOUR_TOKEN' con el token de tu bot
     token = os.getenv('BOT_TOKEN')
-    application = ApplicationBuilder().token(token).build()
+    defaults = Defaults(tzinfo=pytz.timezone('Europe/Madrid'))
+    application = ApplicationBuilder().token(token).defaults(defaults).build()
     
-    application.add_handler(MessageHandler((filters.TEXT | filters.Document.GIF | filters.Document.JPG | filters.Sticker.ALL )& ~filters.COMMAND, message_handler))
+    application.add_handler(MessageHandler(
+        (filters.TEXT | filters.Document.GIF | filters.Document.JPG | filters.Sticker.ALL )& ~filters.COMMAND, 
+        message_handler)
+    )
     application.add_handler(CommandHandler('stats', stats_command))
     application.add_handler(CommandHandler('weekly_stats', weekly_stats_command))
-    application.add_handler(CommandHandler('summary', summary))
-    application.add_handler(CommandHandler('resumen_pls', summary))
+    application.add_handler(CommandHandler('summary', summary_menu))
+    application.add_handler(CommandHandler('resumen_pls', summary_menu))
+    application.add_handler(CommandHandler('graph', chart_per_person))
+    application.add_handler(CommandHandler('all', notify_all))
+    application.add_handler(CallbackQueryHandler(summary))
 
+    application.job_queue.run_daily(stats_job, time(hour=23, minute=59, second=00))
+    application.job_queue.run_daily(weekly_stats_job, time(hour=23, minute=59, second=00), days=[0])
+    
     application.run_polling(allowed_updates=Update.MESSAGE)
 
 if __name__ == '__main__':

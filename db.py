@@ -26,7 +26,7 @@ class MongoConn:
         start = datetime.combine(filtered_date.date(), time.min)
         end = datetime.combine(filtered_date.date(), time.max)
         print(f'Searching between {start} and {end} in group {chat_id}')
-        return self.read_all({'message_time': {'$lte': end, '$gte': start}, 'chat_id': chat_id})
+        return self.read_by_daterange(start_day=start, end_day=end, chat_id = chat_id)
     
     def read_by_daterange(self, start_day: datetime, end_day: datetime, chat_id) -> list:
         return self.read_all(
@@ -89,3 +89,39 @@ class MongoConn:
                 "$sort": { "count": -1 }
             }]
         )
+    
+    def get_message_by_hour_and_person(self, day:datetime, user_id, chat_id)->list:
+        start = datetime.combine(day.date(), time.min)
+        end = datetime.combine(day.date(), time.max)
+
+        return self.collection.aggregate([
+            {
+                '$match': {
+                    'message_time': {
+                        '$lte': end, '$gte': start
+                    }, 
+                    'chat_id': chat_id,
+                    'user_id': user_id
+                }
+            },
+            {
+                '$project': {
+                    'hour': {
+                        '$hour': "$message_time"
+                    }
+                }
+            }, 
+            {
+                '$group': {
+                    '_id': "$hour",
+                    'count': {
+                        '$sum': 1
+                    }
+                }
+            },
+            { 
+                '$sort': { 
+                    '_id': 1 
+                }
+            }
+        ])
