@@ -3,7 +3,7 @@ USERS = {
     '@josmilope': 4666116,
     '@pablodelucia': 10063647,
     '@josecount0': 49022758,
-    '@julaps': 167759057,
+    '@Julaps': 167759057,
     '@pabtx': 196370342,
     '@ruanete': 220289343,
     '@VictorMJ': 301636034,
