@@ -11,6 +11,8 @@ import io
 import os
 import pytz
 
+from utils import get_current_week
+
 load_dotenv()
 
 from constants import USERS, HOLIS_ID
@@ -31,26 +33,13 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-def get_current_week(date):
-    # Asegurarse de que la fecha dada sea un objeto datetime
-    if isinstance(date, datetime):
-        given_date = date
-    else:
-        given_date = datetime.strptime(date, '%Y-%m-%d')
-
-    # Obtener el lunes de la semana actual
-    start_of_week = given_date - timedelta(days=given_date.weekday())
-    # Obtener el domingo de la semana actual
-    end_of_week = start_of_week + timedelta(days=6)
-
-    return start_of_week, end_of_week
-
 # Función para manejar mensajes
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     
     if update.edited_message is None:
         username = update.message.from_user.full_name
+        
         if username == 'Pablo':
             username = 'Pablo' if update.message.from_user.username == 'pablodelucia' else 'Pout'
 
@@ -58,6 +47,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_time = update.message.date.astimezone(gmt2)
 
         logger.info(f"{update.message.from_user.first_name} - {update.message.text}")
+
         mongoConn.save({
             'chat_id': update.message.chat_id,
             'username': username,
@@ -202,16 +192,20 @@ async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         end_day=close_range, 
         chat_id=chat_id
     ))
-    logger.info("Cantidad de mensajes encontrados: ", len(messages))
+
+    logger.info(f"Cantidad de mensajes encontrados: {len(messages)}")
+
+    header_message = f"Resumen entre {selected_hour}:00 y {next_hour}:00:\n" \
+        if selected_hour != "last" else "Resumen del último tramo:\n"
+    
     if len(messages) == 0:
-        logger.info("No hay mensajes: ", len(list(messages)))
+        logger.info(f"No hay mensajes: {len(list(messages))}")
         await update.callback_query.message.reply_text(
-            f"Resumen entre {selected_hour}:00 y {next_hour}:00:\n" + 
-            "No hay mensajes."
+            header_message + "No hay mensajes."
         )
         
         albo_sticker = 'CAACAgQAAxkBAAPWZmf6uvhxFHnhP1I9yEbCCk1Iaf8AAl8QAALzGmFSt4r9iyHeZNs1BA'
-        await update.callback_query.message.reply_sticker(albo_sticker)
+        await update.callback_query._bot.send_sticker(sticker=albo_sticker, chat_id=chat_id)
         
     else:
 
@@ -221,8 +215,7 @@ async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         summary_text = summary_chain(chat_input)
 
         await update.callback_query.message.reply_text(
-            f"Resumen entre {selected_hour}:00 y {next_hour}:00:\n" + 
-            summary_text
+            header_message + summary_text
         )
 
 async def chart_per_person(update:Update, context: ContextTypes.DEFAULT_TYPE):
@@ -241,13 +234,10 @@ async def chart_per_person(update:Update, context: ContextTypes.DEFAULT_TYPE):
         user_id=user_id,
         chat_id=chat_id
     )
+    
+    message_counter = [(message['_id']+2, message['count']) for message in user_list_message]
+    x_axis, y_axis = map(list, zip(*message_counter)) # Day hours  x  Message grouped by hour
 
-    x_axis, y_axis = map(
-        list, 
-        zip(*
-            [(message['_id']+2, message['count']) for message in user_list_message]
-        )
-    ) # Day hours  x  Message grouped by hour
     figure = plt.figure()
     plt.bar(x_axis, y_axis, color='red', width=0.4)
     plt.xticks(range(min(x_axis), max(x_axis)+1))
@@ -267,7 +257,6 @@ async def notify_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     notify_message = " ".join(USERS.keys())
 
     await update.message.reply_text(notify_message)
-
 
 async def stats_job(context: ContextTypes.DEFAULT_TYPE):
     logger.info("##### LLega a ejecutarse el chron")
