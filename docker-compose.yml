@@ -20,19 +20,13 @@ services:
     build: 
       context: .
     network_mode: bridge
-    environment:
-      - BOT_TOKEN 
-      - GROQ_API_KEY
-      - MONGO_DB
-      - MONGO_CONN
     links:
       - mongo:mongo
     depends_on:
       - mongo
     stdin_open: true
     tty: true
-    env_file:
-      - path: .env
+    env_file: .env
     logging:
       driver: "json-file"
       options:
