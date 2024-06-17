@@ -39,7 +39,7 @@ Before you start, ensure you have the following installed on your machine:
     docker-compose up --build
     ```
 
-    This command will start the MongoDB and statistic bot services. The MongoDB service will be available at `localhost:27017`.
+    This command will start the MongoDB and statistic bot services. The MongoDB service will be available at `mongo:27017`.
 
 ## Services
 

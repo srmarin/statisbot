@@ -4,7 +4,7 @@ services:
     container_name: mongo
     image: mongo:7.0.11-jammy
     ports:
-      - 27017:27017
+      - 9999:27017
     stdin_open: true
     tty: true
     network_mode: bridge
