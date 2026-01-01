@@ -17,7 +17,7 @@ services:
         max-file: "50"
   staticsbot:
     container_name: staticsbot
-    build: 
+    build:
       context: .
     network_mode: bridge
     links:

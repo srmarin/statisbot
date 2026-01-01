@@ -3,12 +3,13 @@ import os
 
 from constants import PROFILE_IMG_DIR
 
+
 def get_current_week(date):
     # Asegurarse de que la fecha dada sea un objeto datetime
     if isinstance(date, datetime):
         given_date = date
     else:
-        given_date = datetime.strptime(date, '%Y-%m-%d')
+        given_date = datetime.strptime(date, "%Y-%m-%d")
 
     # Obtener el lunes de la semana actual
     start_of_week = given_date - timedelta(days=given_date.weekday())
