@@ -53,3 +53,21 @@ def speak_as_us(chat_history):
     chat = ChatGroq(model_name=MODEL, temperature=0.6, groq_api_key=GROQ_API_KEY)
     result = chat.invoke(request)
     return result.content
+
+
+def speech_to_text(voice_message):
+    
+    try:
+        with open(voice_message, "rb") as file:
+            transcription = client.audio.transcriptions.create(
+                file=(voice_message, file.read()),
+                model="distil-whisper-large-v3-en",
+                response_format="verbose_json",
+            )
+            return transcription.text
+    except FileExistsError as fe:
+        print(fe)
+        return "No se pudo procesar el mensaje"
+    except Exception as ex:
+        print(ex)
+        return "Hubo un problema"
