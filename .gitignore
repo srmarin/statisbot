@@ -1,3 +1,6 @@
+# Ignore secrets file
+secrets/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

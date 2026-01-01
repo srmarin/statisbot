@@ -1,0 +1,37 @@
+version: '3.3'
+services:
+  mongo:
+    container_name: mongo
+    image: mongo:7.0.11-jammy
+    ports:
+      - 27017:27017
+    stdin_open: true
+    tty: true
+    network_mode: bridge
+    volumes:
+      - mongo:/data/db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "50"
+  staticsbot:
+    container_name: staticsbot
+    build: 
+      context: .
+    network_mode: bridge
+    links:
+      - mongo:mongo
+    depends_on:
+      - mongo
+    stdin_open: true
+    tty: true
+    env_file: .env
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "50"
+
+volumes:
+  mongo:
