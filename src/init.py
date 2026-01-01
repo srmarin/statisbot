@@ -13,12 +13,12 @@ import pytz
 
 from utils import get_current_week
 
-load_dotenv()
+load_dotenv('../.env')
 
 from constants import USERS, HOLIS_ID
 
 from db import MongoConn
-from chains import summary_chain
+from chains import speech_to_text, summary_chain
 
 gmt2 = pytz.timezone('Europe/Madrid')
 HOURS_IN_KEYBOARD = (3, 7, 9, 11, 13, 15, 17, 19, 22, 24)
@@ -93,7 +93,6 @@ def stats_message(chat_id):
     # await update.message.reply_text(output_message)
     logger.info('#'*15)
     return output
-
 
 
 def weekly_stats_message(chat_id):
@@ -253,6 +252,24 @@ async def chart_per_person(update:Update, context: ContextTypes.DEFAULT_TYPE):
         caption=f"Gráfica de mensajes de {username}"
     )
    
+async def get_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.reply_to_message and update.message.reply_to_message.voice:
+        voice_message = await  context.bot.get_file(update.message.reply_to_message.voice.file_id)
+        # download the voice note as a file
+        if not os.path.isdir('./voices'):
+            os.mkdir('./voices/')
+        voice_message_path = await voice_message.download_to_drive(f"./voices/{update.message.from_user.username.replace(' ', '-')}_{update.message.reply_to_message.voice.file_id}.ogg")
+        voice_text = speech_to_text(str(voice_message_path))
+
+        await update.message.reply_text(voice_text)
+        try:
+            os.remove(str(voice_message_path))
+        except Exception as e:
+            print(e)
+
+    else:
+        await update.message.reply_text("¿Cómo te voy a convertir a texto el audio si no has mandao audio?")
+
 async def notify_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     notify_message = " ".join(USERS.keys())
 
@@ -279,11 +296,15 @@ def main():
         (filters.TEXT | filters.Document.GIF | filters.Document.JPG | filters.Sticker.ALL )& ~filters.COMMAND, 
         message_handler)
     )
+    # application.add_handler(MessageHandler(filters.voice , get_voice_message))
+
+
     application.add_handler(CommandHandler('stats', stats_command))
     application.add_handler(CommandHandler('weekly_stats', weekly_stats_command))
     application.add_handler(CommandHandler('summary', summary_menu))
     application.add_handler(CommandHandler('resumen_pls', summary_menu))
     application.add_handler(CommandHandler('graph', chart_per_person))
+    application.add_handler(CommandHandler('s2t', get_voice_message))
     application.add_handler(CommandHandler('all', notify_all))
     application.add_handler(CallbackQueryHandler(summary))
 
