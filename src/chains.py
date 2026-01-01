@@ -1,4 +1,4 @@
-from langchain.prompts import (
+from langchain_core.prompts import (
     SystemMessagePromptTemplate,
     HumanMessagePromptTemplate,
     ChatPromptTemplate,
@@ -30,7 +30,7 @@ def summary_chain(chat_history):
     request = chat_prompt.format_prompt(chat_history=chat_history).to_messages()
 
     chat = ChatGroq(model_name=MODEL, temperature=0.2, groq_api_key=GROQ_API_KEY)
-    result = chat(request)
+    result = chat.invoke(request)
     return result.content
 
 
@@ -51,5 +51,5 @@ def speak_as_us(chat_history):
     request = chat_prompt.format_prompt(chat_history=chat_history).to_messages()
 
     chat = ChatGroq(model_name=MODEL, temperature=0.6, groq_api_key=GROQ_API_KEY)
-    result = chat(request)
+    result = chat.invoke(request)
     return result.content
